@@ -158,7 +158,7 @@ WHERE w.deleted IS MISSING;", options =>
                     
                     if (document with { Id = documentToCreateOrUpdate.Id } == documentToCreateOrUpdate)
                     {
-                        throw new InvalidOperationException("No change detected");
+                        throw new DocumentExistsException("Document already exists");
                     };
                 }
                 else
@@ -188,10 +188,6 @@ WHERE w.deleted IS MISSING;", options =>
             catch (TimeoutException)
             {
                 // propagate, since time budget's up
-                throw;
-            }
-            catch (InvalidOperationException) 
-            {
                 throw;
             }
             catch (CouchbaseException)
