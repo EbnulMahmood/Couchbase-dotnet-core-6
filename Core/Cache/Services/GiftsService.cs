@@ -3,15 +3,16 @@ using Couchbase.KeyValue;
 using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase;
 using Document;
+using Newtonsoft.Json.Linq;
 
 namespace Cache.Services
 {
     public interface IGiftsService
     {
         Task<IEnumerable<WishlistItem>> LoadWishlistItemAsync(CancellationToken token = default);
-        Task<WishlistItem> GetWishlistByIdAsync(Guid id);
-        Task CreateOrEditAsync(WishlistItemCreateOrUpdate documentToCreateOrUpdate);
-        Task DeleteAsync(Guid id, bool isSoftDelete = false);
+        Task<WishlistItem> GetWishlistByIdAsync(Guid id, CancellationToken token = default);
+        Task CreateOrEditAsync(WishlistItemCreateOrUpdate documentToCreateOrUpdate, CancellationToken token = default);
+        Task DeleteAsync(Guid id, bool isSoftDelete = false, CancellationToken token = default);
     }
 
     public sealed class GiftsService : IGiftsService
@@ -37,20 +38,24 @@ SELECT
 META(w).id
 ,w.name
 FROM Demo._default.wishlist w
-WHERE w.deleted IS MISSING;")
-                    .ConfigureAwait(false);
+WHERE w.deleted IS MISSING;", options =>
+                {
+                    options.Timeout(TimeSpan.FromSeconds(5));
+                    options.CancellationToken(token);
+                })
+                .ConfigureAwait(false);
                 return await result.ToListAsync(cancellationToken: token).ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                // propagate, since time budget's up
-                throw;
             }
             catch (DocumentNotFoundException)
             {
                 // cache miss - get value from permanent storage
 
                 // repopulate cache so subsequent calls get cache hit
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // propagate, since time budget's up
                 throw;
             }
             catch (CouchbaseException)
@@ -65,14 +70,18 @@ WHERE w.deleted IS MISSING;")
             }
         }
 
-        public async Task<WishlistItem> GetWishlistByIdAsync(Guid id)
+        public async Task<WishlistItem> GetWishlistByIdAsync(Guid id, CancellationToken token = default)
         {
             try
             {
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 var collection = await bucket.CollectionAsync(_collectionName).ConfigureAwait(false);
 
-                var item = await collection.GetAsync(id.ToString()).ConfigureAwait(false);
+                var item = await collection.GetAsync(id.ToString(), options =>
+                {
+                    options.Timeout(TimeSpan.FromSeconds(5));
+                    options.CancellationToken(token);
+                }).ConfigureAwait(false);
 
                 var document = item.ContentAs<WishlistItem>();
 
@@ -80,16 +89,16 @@ WHERE w.deleted IS MISSING;")
 
                 return document;
             }
-            catch (TimeoutException)
-            {
-                // propagate, since time budget's up
-                throw;
-            }
             catch (DocumentNotFoundException)
             {
                 // cache miss - get value from permanent storage
 
                 // repopulate cache so subsequent calls get cache hit
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // propagate, since time budget's up
                 throw;
             }
             catch (CouchbaseException)
@@ -104,7 +113,7 @@ WHERE w.deleted IS MISSING;")
             }
         }
 
-        public async Task CreateOrEditAsync(WishlistItemCreateOrUpdate documentToCreateOrUpdate)
+        public async Task CreateOrEditAsync(WishlistItemCreateOrUpdate documentToCreateOrUpdate, CancellationToken token = default)
         {
             try
             {
@@ -113,7 +122,11 @@ WHERE w.deleted IS MISSING;")
 
                 if (string.IsNullOrWhiteSpace(documentToCreateOrUpdate.Id) is false)
                 {
-                    var item = await collection.GetAsync(documentToCreateOrUpdate.Id).ConfigureAwait(false);
+                    var item = await collection.GetAsync(documentToCreateOrUpdate.Id, options =>
+                    {
+                        options.Timeout(TimeSpan.FromSeconds(5));
+                        options.CancellationToken(token);
+                    }).ConfigureAwait(false);
 
                     var document = item.ContentAs<WishlistItemCreateOrUpdate>();
 
@@ -126,18 +139,28 @@ WHERE w.deleted IS MISSING;")
                     documentToCreateOrUpdate = documentToCreateOrUpdate with { Id = Guid.NewGuid().ToString() };
                 }
 
-                await collection.UpsertAsync(documentToCreateOrUpdate.Id, new { documentToCreateOrUpdate.Name }).ConfigureAwait(false);
-            }
-            catch (TimeoutException)
-            {
-                // propagate, since time budget's up
-                throw;
+                await collection.UpsertAsync(documentToCreateOrUpdate.Id, new { documentToCreateOrUpdate.Name }, options =>
+                {
+                    //options.Expiry(TimeSpan.FromMinutes(1));
+                    //options.Durability(PersistTo.One, ReplicateTo.One); /* or */ // options.Durability(DurabilityLevel.Majority);
+                    options.Timeout(TimeSpan.FromSeconds(5));
+                    options.CancellationToken(token);
+                }).ConfigureAwait(false);
             }
             catch (DocumentNotFoundException)
             {
                 // cache miss - get value from permanent storage
 
                 // repopulate cache so subsequent calls get cache hit
+                throw;
+            }
+            catch (DocumentExistsException)
+            {
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // propagate, since time budget's up
                 throw;
             }
             catch (CouchbaseException)
@@ -152,37 +175,50 @@ WHERE w.deleted IS MISSING;")
             }
         }
 
-        public async Task DeleteAsync(Guid id, bool isSoftDelete = false)
+        public async Task DeleteAsync(Guid id, bool isSoftDelete = false, CancellationToken token = default)
         {
             try
             {
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 var collection = await bucket.CollectionAsync(_collectionName).ConfigureAwait(false);
 
+                var previousResult = await collection.GetAsync(id.ToString()).ConfigureAwait(false);
+
                 if (isSoftDelete == false)
                 {
-                    await collection.RemoveAsync(id.ToString()).ConfigureAwait(false);
+                    await collection.RemoveAsync(id.ToString(), options =>
+                    {
+                        options.Cas(previousResult.Cas);
+                        options.Timeout(TimeSpan.FromSeconds(5));
+                        options.CancellationToken(token);
+
+                    }).ConfigureAwait(false);
                 }
                 else
                 {
-                    var item = await collection.GetAsync(id.ToString()).ConfigureAwait(false);
-                    var document = item.ContentAs<WishlistItem>();
+                    var document = previousResult.ContentAs<WishlistItem>();
 
                     Validation(document.Deleted);
 
                     await collection.MutateInAsync(id.ToString(), specs =>
-                        specs.Upsert("deleted", DateTime.Now)
+                    {
+                        specs.Upsert("deleted", DateTime.Now);
+                    }, options =>
+                    {
+                        options.Timeout(TimeSpan.FromSeconds(5));
+                        options.CancellationToken(token);
+                    }
                     ).ConfigureAwait(false);
                 }
-            }
-            catch (TimeoutException)
-            {
-                // propagate, since time budget's up
-                throw;
             }
             catch (DocumentNotFoundException)
             {
                 // cache key doesn't exist
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // propagate, since time budget's up
                 throw;
             }
             catch (CouchbaseException)

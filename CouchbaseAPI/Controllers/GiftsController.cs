@@ -33,11 +33,11 @@ namespace CouchbaseAPI.Controllers
 
         [HttpGet]
         [Route("/list/get/{id}")]
-        public async Task<JsonResult> GetWishListById(Guid id)
+        public async Task<JsonResult> GetWishListById(Guid id, CancellationToken token = default)
         {
             try
             {
-                var wishlist = await _giftsService.GetWishlistByIdAsync(id).ConfigureAwait(false);
+                var wishlist = await _giftsService.GetWishlistByIdAsync(id, token).ConfigureAwait(false);
                 return new JsonResult(wishlist with { Id = id });
             }
             catch (Exception)
@@ -49,11 +49,11 @@ namespace CouchbaseAPI.Controllers
 
         [HttpPost]
         [Route("/list/create-or-edit")]
-        public async Task<IActionResult> CreateOrEdit(WishlistItemCreateOrUpdate documentToCreateOrUpdate)
+        public async Task<IActionResult> CreateOrEdit(WishlistItemCreateOrUpdate documentToCreateOrUpdate, CancellationToken token = default)
         {
             try
             {
-                await _giftsService.CreateOrEditAsync(documentToCreateOrUpdate).ConfigureAwait(false);
+                await _giftsService.CreateOrEditAsync(documentToCreateOrUpdate, token).ConfigureAwait(false);
                 return Ok();
             }
             catch (Exception)
@@ -65,11 +65,11 @@ namespace CouchbaseAPI.Controllers
 
         [HttpDelete]
         [Route("/list/delete/{id}")]
-        public async Task<IActionResult> Delete(Guid id) 
+        public async Task<IActionResult> Delete(Guid id, CancellationToken token = default)
         {
             try
             {
-                await _giftsService.DeleteAsync(id).ConfigureAwait(false);
+                await _giftsService.DeleteAsync(id, token: token).ConfigureAwait(false);
                 return Ok();
             }
             catch (Exception)
@@ -81,11 +81,11 @@ namespace CouchbaseAPI.Controllers
 
         [HttpDelete]
         [Route("/list/soft-delete/{id}")]
-        public async Task<IActionResult> SoftDelete(Guid id)
+        public async Task<IActionResult> SoftDelete(Guid id, CancellationToken token = default)
         {
             try
             {
-                await _giftsService.DeleteAsync(id, true).ConfigureAwait(false);
+                await _giftsService.DeleteAsync(id, isSoftDelete: true, token).ConfigureAwait(false);
                 return Ok();
             }
             catch (Exception)
