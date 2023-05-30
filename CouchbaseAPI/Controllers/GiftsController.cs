@@ -38,7 +38,7 @@ namespace CouchbaseAPI.Controllers
             try
             {
                 var wishlist = await _giftsService.GetWishlistByIdAsync(id, token).ConfigureAwait(false);
-                return new JsonResult(wishlist with { Id = id });
+                return new JsonResult(wishlist);
             }
             catch (Exception)
             {

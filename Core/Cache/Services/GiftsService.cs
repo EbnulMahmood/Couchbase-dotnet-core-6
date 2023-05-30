@@ -3,7 +3,7 @@ using Couchbase.KeyValue;
 using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase;
 using Document;
-using Newtonsoft.Json.Linq;
+using Couchbase.Query;
 
 namespace Cache.Services
 {
@@ -44,6 +44,12 @@ WHERE w.deleted IS MISSING;", options =>
                     options.CancellationToken(token);
                 })
                 .ConfigureAwait(false);
+
+                if (result.MetaData?.Status is not QueryStatus.Success)
+                {
+                    throw new CouchbaseException("Query execution error");
+                }
+
                 return await result.ToListAsync(cancellationToken: token).ConfigureAwait(false);
             }
             catch (DocumentNotFoundException)
@@ -74,6 +80,10 @@ WHERE w.deleted IS MISSING;", options =>
         {
             try
             {
+                if (id == default)
+                {
+                    throw new DocumentNotFoundException("Not a valid Id");
+                }
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 var collection = await bucket.CollectionAsync(_collectionName).ConfigureAwait(false);
 
@@ -87,7 +97,7 @@ WHERE w.deleted IS MISSING;", options =>
 
                 Validation(document.Deleted);
 
-                return document;
+                return document with { Id = id };
             }
             catch (DocumentNotFoundException)
             {
@@ -179,12 +189,17 @@ WHERE w.deleted IS MISSING;", options =>
         {
             try
             {
+                if (id == default)
+                {
+                    throw new DocumentNotFoundException("Not a valid Id");
+                }
+
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 var collection = await bucket.CollectionAsync(_collectionName).ConfigureAwait(false);
 
                 var previousResult = await collection.GetAsync(id.ToString()).ConfigureAwait(false);
 
-                if (isSoftDelete == false)
+                if (isSoftDelete is false)
                 {
                     await collection.RemoveAsync(id.ToString(), options =>
                     {
