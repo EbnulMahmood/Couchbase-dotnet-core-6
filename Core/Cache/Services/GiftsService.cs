@@ -4,6 +4,7 @@ using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase;
 using Document;
 using Couchbase.Query;
+using App.Metrics;
 
 namespace Cache.Services
 {
@@ -28,6 +29,7 @@ namespace Cache.Services
 
         public async Task<IEnumerable<WishlistItem>> LoadWishlistItemAsync(CancellationToken token = default)
         {
+            string? executionTime = string.Empty;
             try
             {
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
@@ -41,6 +43,8 @@ FROM Demo._default.wishlist w
 WHERE w.deleted IS MISSING;", options =>
                 {
                     options.Timeout(TimeSpan.FromSeconds(5));
+                    options.Metrics(true);
+                    options.Readonly(true);
                     options.CancellationToken(token);
                 })
                 .ConfigureAwait(false);
@@ -49,6 +53,9 @@ WHERE w.deleted IS MISSING;", options =>
                 {
                     throw new CouchbaseException("Query execution error");
                 }
+
+                var metrics = result.MetaData.Metrics;
+                executionTime = metrics?.ExecutionTime;
 
                 return await result.ToListAsync(cancellationToken: token).ConfigureAwait(false);
             }
@@ -74,6 +81,11 @@ WHERE w.deleted IS MISSING;", options =>
 
                 throw;
             }
+            finally
+            {
+                // Log information
+                Console.WriteLine($"Execution time: {executionTime}");
+            }
         }
 
         public async Task<WishlistItem> GetWishlistByIdAsync(Guid id, CancellationToken token = default)
@@ -90,6 +102,7 @@ WHERE w.deleted IS MISSING;", options =>
                 var item = await collection.GetAsync(id.ToString(), options =>
                 {
                     options.Timeout(TimeSpan.FromSeconds(5));
+                    options.AsReadOnly();
                     options.CancellationToken(token);
                 }).ConfigureAwait(false);
 
@@ -135,14 +148,18 @@ WHERE w.deleted IS MISSING;", options =>
                     var item = await collection.GetAsync(documentToCreateOrUpdate.Id, options =>
                     {
                         options.Timeout(TimeSpan.FromSeconds(5));
+                        options.AsReadOnly();
                         options.CancellationToken(token);
                     }).ConfigureAwait(false);
 
                     var document = item.ContentAs<WishlistItemCreateOrUpdate>();
 
                     Validation(document.Deleted);
-
-                    documentToCreateOrUpdate = document;
+                    
+                    if (document with { Id = documentToCreateOrUpdate.Id } == documentToCreateOrUpdate)
+                    {
+                        throw new InvalidOperationException("No change detected");
+                    };
                 }
                 else
                 {
@@ -173,6 +190,10 @@ WHERE w.deleted IS MISSING;", options =>
                 // propagate, since time budget's up
                 throw;
             }
+            catch (InvalidOperationException) 
+            {
+                throw;
+            }
             catch (CouchbaseException)
             {
                 // error performing insert
@@ -197,7 +218,12 @@ WHERE w.deleted IS MISSING;", options =>
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 var collection = await bucket.CollectionAsync(_collectionName).ConfigureAwait(false);
 
-                var previousResult = await collection.GetAsync(id.ToString()).ConfigureAwait(false);
+                var previousResult = await collection.GetAsync(id.ToString(), options =>
+                {
+                    options.Timeout(TimeSpan.FromSeconds(5));
+                    options.AsReadOnly();
+                    options.CancellationToken(token);
+                }).ConfigureAwait(false);
 
                 if (isSoftDelete is false)
                 {
