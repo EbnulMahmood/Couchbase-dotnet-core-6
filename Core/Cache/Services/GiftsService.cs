@@ -143,19 +143,19 @@ WHERE w.deleted IS MISSING;", options =>
                 var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
                 var collection = await bucket.CollectionAsync(_collectionName).ConfigureAwait(false);
 
+                var item = await collection.GetAsync(documentToCreateOrUpdate.Id, options =>
+                {
+                    options.Timeout(TimeSpan.FromSeconds(5));
+                    options.AsReadOnly();
+                    options.CancellationToken(token);
+                }).ConfigureAwait(false);
+
+                var document = item.ContentAs<WishlistItemCreateOrUpdate>();
+
+                Validation(document.Deleted);
+
                 if (string.IsNullOrWhiteSpace(documentToCreateOrUpdate.Id) is false)
                 {
-                    var item = await collection.GetAsync(documentToCreateOrUpdate.Id, options =>
-                    {
-                        options.Timeout(TimeSpan.FromSeconds(5));
-                        options.AsReadOnly();
-                        options.CancellationToken(token);
-                    }).ConfigureAwait(false);
-
-                    var document = item.ContentAs<WishlistItemCreateOrUpdate>();
-
-                    Validation(document.Deleted);
-                    
                     if (document with { Id = documentToCreateOrUpdate.Id } == documentToCreateOrUpdate)
                     {
                         throw new DocumentExistsException("Document already exists");
@@ -163,6 +163,10 @@ WHERE w.deleted IS MISSING;", options =>
                 }
                 else
                 {
+                    if (string.Equals(documentToCreateOrUpdate.Name, document.Name, StringComparison.OrdinalIgnoreCase))
+                    {
+                        throw new DocumentExistsException("Document already exists");
+                    }
                     documentToCreateOrUpdate = documentToCreateOrUpdate with { Id = Guid.NewGuid().ToString() };
                 }
 
