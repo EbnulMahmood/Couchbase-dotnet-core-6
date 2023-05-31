@@ -32,6 +32,22 @@ namespace CouchbaseAPI.Controllers
         }
 
         [HttpGet]
+        [Route("/list/with-customer")]
+        public async Task<JsonResult> LoadListWithCustome(CancellationToken token = default)
+        {
+            try
+            {
+                var wishlistItemList = await _giftsService.LoadWishlistItemWithCustomerAsync(token).ConfigureAwait(false);
+                return new JsonResult(wishlistItemList);
+            }
+            catch (Exception)
+            {
+
+                throw;
+            }
+        }
+
+        [HttpGet]
         [Route("/list/get/{id}")]
         public async Task<JsonResult> GetWishListById(Guid id, CancellationToken token = default)
         {

@@ -4,13 +4,13 @@ using Couchbase.Core.Exceptions.KeyValue;
 using Couchbase;
 using Document;
 using Couchbase.Query;
-using App.Metrics;
 
 namespace Cache.Services
 {
     public interface IGiftsService
     {
         Task<IEnumerable<WishlistItem>> LoadWishlistItemAsync(CancellationToken token = default);
+        Task<IEnumerable<WishlistItemCreateOrUpdateWithCustomer>> LoadWishlistItemWithCustomerAsync(CancellationToken token = default);
         Task<WishlistItem> GetWishlistByIdAsync(Guid id, CancellationToken token = default);
         Task CreateOrEditAsync(WishlistItemCreateOrUpdate documentToCreateOrUpdate, CancellationToken token = default);
         Task DeleteAsync(Guid id, bool isSoftDelete = false, CancellationToken token = default);
@@ -47,6 +47,70 @@ WHERE w.deleted IS MISSING;", options =>
                     options.Readonly(true);
                     options.CancellationToken(token);
                 })
+                .ConfigureAwait(false);
+
+                if (result.MetaData?.Status is not QueryStatus.Success)
+                {
+                    throw new CouchbaseException("Query execution error");
+                }
+
+                var metrics = result.MetaData.Metrics;
+                executionTime = metrics?.ExecutionTime;
+
+                return await result.ToListAsync(cancellationToken: token).ConfigureAwait(false);
+            }
+            catch (DocumentNotFoundException)
+            {
+                // cache miss - get value from permanent storage
+
+                // repopulate cache so subsequent calls get cache hit
+                throw;
+            }
+            catch (TimeoutException)
+            {
+                // propagate, since time budget's up
+                throw;
+            }
+            catch (CouchbaseException)
+            {
+                // error performing insert
+                throw;
+            }
+            catch (Exception)
+            {
+
+                throw;
+            }
+            finally
+            {
+                // Log information
+                Console.WriteLine($"Execution time: {executionTime}");
+            }
+        }
+
+        public async Task<IEnumerable<WishlistItemCreateOrUpdateWithCustomer>> LoadWishlistItemWithCustomerAsync(CancellationToken token = default)
+        {
+            string? executionTime = string.Empty;
+            try
+            {
+                var bucket = await _bucketProvider.GetBucketAsync(_bucketName).ConfigureAwait(false);
+                var cluster = bucket.Cluster;
+                var result = await cluster.QueryAsync<WishlistItemCreateOrUpdateWithCustomer>(
+@$"
+SELECT 
+META(w).id
+,w.name
+,c.name AS customerName
+FROM Demo._default.wishlist w
+INNER JOIN Demo._default.customer c
+ON (w.customerId = META(c).id)
+WHERE w.deleted IS MISSING;", options =>
+{
+    options.Timeout(TimeSpan.FromSeconds(5));
+    options.Metrics(true);
+    options.Readonly(true);
+    options.CancellationToken(token);
+})
                 .ConfigureAwait(false);
 
                 if (result.MetaData?.Status is not QueryStatus.Success)
