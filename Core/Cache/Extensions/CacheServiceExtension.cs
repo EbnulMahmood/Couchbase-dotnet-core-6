@@ -8,6 +8,7 @@ namespace Cache.Extensions
         public static void AddCacheService(this IServiceCollection services)
         {
             services.AddSingleton<IGiftsService, GiftsService>();
+            services.AddSingleton<IOrderService, OrderService>();
         }
     }
 }
