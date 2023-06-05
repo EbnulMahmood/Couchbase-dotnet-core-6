@@ -21,7 +21,7 @@ namespace CouchbaseAPI.Controllers
             try
             {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                var customerList = await _orderService.LoadCustomerAsync(token);
+                var customerList = await _orderService.LoadCustomerAsync(token).ConfigureAwait(false);
                 watch.Stop();
                 return Ok($"{customerList.Count()} Records Load Time: {watch.ElapsedMilliseconds} milliseconds, {TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds).TotalSeconds} seconds and {TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds).TotalMinutes} minutes");
             }
@@ -39,7 +39,7 @@ namespace CouchbaseAPI.Controllers
             try
             {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                var customerList = await _orderService.LoadOrderAsync(token);
+                var customerList = await _orderService.LoadOrderAsync(token).ConfigureAwait(false);
                 watch.Stop();
                 return Ok($"{customerList.Count()} Records Load Time: {watch.ElapsedMilliseconds} milliseconds, {TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds).TotalSeconds} seconds and {TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds).TotalMinutes} minutes");
             }
@@ -57,7 +57,7 @@ namespace CouchbaseAPI.Controllers
             try
             {
                 var watch = System.Diagnostics.Stopwatch.StartNew();
-                var customerList = await _orderService.LoadOrderWithCustomerAsync(token);
+                var customerList = await _orderService.LoadOrderWithCustomerAsync(token).ConfigureAwait(false);
                 watch.Stop();
                 return Ok($"{customerList.Count()} Records Load Time: {watch.ElapsedMilliseconds} milliseconds, {TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds).TotalSeconds} seconds and {TimeSpan.FromMilliseconds(watch.ElapsedMilliseconds).TotalMinutes} minutes");
             }
@@ -70,7 +70,7 @@ namespace CouchbaseAPI.Controllers
 
         //[HttpGet]
         //[Route("/seed-data")]
-        //public async Task<IActionResult> LoadList(CancellationToken token = default)
+        //public async Task<IActionResult> SeedData(CancellationToken token = default)
         //{
         //    try
         //    {
